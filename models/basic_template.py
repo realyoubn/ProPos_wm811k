@@ -316,12 +316,13 @@ class TrainTask(object):
 
     def set_loader(self):
         opt = self.opt
-
+    
         normalize = self.normalize(opt.dataset)
-
+    
         train_transform = self.train_transform(normalize)
-        self.logger.msg_str(f'set train transform... \n {str(train_transform)}')
-
+        # 移除训练变换的打印输出
+        # self.logger.msg_str(f'set train transform... \n {str(train_transform)}')
+    
         train_loader, labels, sampler = self.build_dataloader(
             dataset_name=opt.dataset,
             transform=train_transform,
@@ -334,11 +335,13 @@ class TrainTask(object):
             label_file=opt.label_file)
         if sampler is None:
             sampler = train_loader.sampler
-        self.logger.msg_str(f'set train dataloader with {len(train_loader)} iterations...')
-
+        # 移除数据加载器迭代次数的打印输出
+        # self.logger.msg_str(f'set train dataloader with {len(train_loader)} iterations...')
+    
         test_transform = self.test_transform(normalize)
-        self.logger.msg_str(f'set test transform... \n {str(test_transform)}')
-
+        # 移除测试变换的打印输出
+        # self.logger.msg_str(f'set test transform... \n {str(test_transform)}')
+    
         if 'imagenet' in opt.dataset:
             if not opt.test_resized_crop:
                 warnings.warn('ImageNet should center crop during testing...')
@@ -347,7 +350,8 @@ class TrainTask(object):
                                             train=False,
                                             sampler=True,
                                             batch_size=opt.batch_size)[0]
-        self.logger.msg_str(f'set test dataloader with {len(test_loader)} iterations...')
+        # 移除测试数据加载器的打印输出
+        # self.logger.msg_str(f'set test dataloader with {len(test_loader)} iterations...')
         memory_loader = self.build_dataloader(opt.dataset,
                                               test_transform,
                                               train=True,
@@ -355,8 +359,9 @@ class TrainTask(object):
                                               sampler=True,
                                               memory=True,
                                               label_file=opt.label_file)[0]
-        self.logger.msg_str(f'set memory dataloader with {len(memory_loader)} iterations...')
-
+        # 移除内存数据加载器的打印输出
+        # self.logger.msg_str(f'set memory dataloader with {len(memory_loader)} iterations...')
+    
         self.test_loader = test_loader
         self.memory_loader = memory_loader
         self.train_loader = train_loader
@@ -368,8 +373,9 @@ class TrainTask(object):
         self.num_cluster = self.num_classes if opt.num_cluster is None else opt.num_cluster
         opt.num_cluster = self.num_cluster
         self.psedo_labels = torch.zeros((self.num_samples,)).long().cuda()
-
-        self.logger.msg_str('load {} images...'.format(self.num_samples))
+    
+        # 保留图像数量的打印输出
+        # self.logger.msg_str('load {} images...'.format(self.num_samples))
 
     def fit(self):
         opt = self.opt
@@ -510,13 +516,15 @@ class TrainTask(object):
     @torch.no_grad()
     def psedo_labeling(self, n_iter):
         opt = self.opt
-
+    
         torch.cuda.empty_cache()
-        self.logger.msg_str('Generating the psedo-labels')
-
+        # 移除伪标签生成的打印输出
+        # self.logger.msg_str('Generating the psedo-labels')
+    
         if opt.use_copy:
             msg = self.feature_extractor_copy.load_state_dict(self.feature_extractor.state_dict())
-            self.logger.msg_str(msg)
+            # 移除状态字典加载的打印输出
+            # self.logger.msg_str(msg)
             params = self.feature_extractor_copy.state_dict()
             # 只在分布式初始化后执行broadcast
             if dist.is_initialized():
@@ -525,33 +533,35 @@ class TrainTask(object):
             feature_extractor = self.feature_extractor_copy
         else:
             feature_extractor = self.feature_extractor
-
+    
         mem_features, mem_labels = extract_features(feature_extractor, self.memory_loader)
         if self.l2_normalize:
             # mem_features = F.normalize(mem_features, dim=1)
             mem_features.div_(torch.linalg.norm(mem_features, dim=1, ord=2, keepdim=True))
-
+    
         psedo_labels, cluster_centers = self.clustering(mem_features, self.num_cluster)
         # 只在分布式初始化后执行barrier
         if dist.is_initialized():
             dist.barrier()
         global_std = torch.std(mem_features, dim=0).mean()
-
+    
+        # 移除唯一值计数的打印输出
         self.logger.msg_str(torch.unique(psedo_labels.cpu(), return_counts=True))
         self.logger.msg_str(torch.unique(mem_labels.long().cpu(), return_counts=True))
-
+    
         results = torch_clustering.evaluate_clustering(mem_labels.cpu().numpy(),
-                                                       psedo_labels.cpu().numpy(),
-                                                       eval_metric=opt.eval_metric,
-                                                       phase='ema_train')
+                                                     psedo_labels.cpu().numpy(),
+                                                     eval_metric=opt.eval_metric,
+                                                     phase='ema_train')
         results['global_std'] = global_std
+        # 保留指标结果的输出
         self.logger.msg(results, n_iter)
-
+    
         # 只在分布式初始化后执行broadcast
         if dist.is_initialized():
             dist.broadcast(psedo_labels, src=0)
             dist.broadcast(cluster_centers, src=0)
-
+    
         self.psedo_labels.copy_(psedo_labels)
         self.cluster_centers = cluster_centers
         self.mem_data = {
@@ -559,15 +569,16 @@ class TrainTask(object):
             'labels': mem_labels,
             'epoch': self.cur_epoch
         }
-
+    
         if opt.data_resample:
             counts = torch.unique(psedo_labels.cpu(), return_counts=True)[1]
             weights = torch.zeros(psedo_labels.size()).float()
             for l in range(counts.size(0)):
                 weights[psedo_labels == l] = psedo_labels.size(0) / counts[l]
             self.sampler.set_weights(weights)
-            self.logger.msg_str(f'set the weights of train dataloader as {weights.cpu().numpy()}')
-
+            # 移除权重设置的打印输出
+            # self.logger.msg_str(f'set the weights of train dataloader as {weights.cpu().numpy()}')
+    
         torch.cuda.empty_cache()
 
     def collect_params(self, *models, exclude_bias_and_bn=True):
