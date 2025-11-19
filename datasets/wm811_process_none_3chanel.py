@@ -185,7 +185,7 @@ if __name__ == '__main__':
 
     args = parse_args()
     # 注意：确保pkl文件路径与实际存放位置一致
-    processor = WM811kProcessor(wm811k_file='./data/wm811k/LSWMD.pkl')
+    processor = WM811kProcessor(wm811k_file='/kaggle/input/wm811k-wafer-map/LSWMD.pkl')
 
     if not check_files_exist_in_directory(args.labeled_root):
         processor.write_labeled_images(
