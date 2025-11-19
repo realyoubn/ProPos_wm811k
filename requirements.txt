@@ -1,0 +1,8 @@
+munkres
+tensorboard
+opencv-python
+wandb
+prettytable
+timm
+scikit-learn
+matplotlib
