@@ -6,7 +6,7 @@ momentum_base: 0.9
 momentum_max: 1.0
 momentum_increase: true
 dataset: wm811k
-data_folder: './datasets/Python/data/wm811k/labeled'
+data_folder: '/kaggle/working/data/wm811k/labeled'
 eval_metric:
   - nmi
   - acc
