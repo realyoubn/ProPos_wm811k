@@ -33,6 +33,6 @@ model_name: propos
 cluster_loss_weight: 0.1
 latent_std: 0.001
 use_weighted_sampler: true
-wandb: true
+wandb: false
 project_name: 'clustering'
 entity: '1741709996-eed'
