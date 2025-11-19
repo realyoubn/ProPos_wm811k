@@ -167,8 +167,8 @@ if __name__ == '__main__':
     def parse_args():
         """Parse command line arguments."""
         parser = argparse.ArgumentParser("Process WM-811k data to individual image files.", add_help=True)
-        parser.add_argument('--labeled_root', type=str, default='./data/wm811k/labeled')
-        parser.add_argument('--unlabeled_root', type=str, default='./data/wm811k/unlabeled')
+        parser.add_argument('--labeled_root', type=str, default='./data/wm811k/labeled/wm811k/')
+        parser.add_argument('--unlabeled_root', type=str, default='./data/wm811k/unlabeled/wm811k/')
         parser.add_argument('--labeled_train_size', type=float, default=0.8)
         parser.add_argument('--labeled_valid_size', type=float, default=0.1)
         parser.add_argument('--unlabeled_train_size', type=float, default=0.8)
