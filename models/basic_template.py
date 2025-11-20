@@ -410,6 +410,9 @@ class TrainTask(object):
             if (self.cur_epoch % opt.test_freq == 0) or (self.cur_epoch % opt.save_freq == 0) or apply_kmeans:
                 if opt.save_checkpoints:
                     self.logger.checkpoints(int(self.cur_epoch))
+                # 新增：即使不保存模型，也保存指标
+                else:
+                    self.logger.save_metrics()
 
             if apply_kmeans:
                 self.psedo_labeling(n_iter)
@@ -422,6 +425,9 @@ class TrainTask(object):
 
             if self.cur_epoch > opt.epochs:
                 break
+        
+        # 新增：训练结束后保存最终的指标
+        self.logger.save_metrics()
 
     def set_model(opt):
         pass

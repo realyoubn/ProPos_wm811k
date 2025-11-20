@@ -1,6 +1,5 @@
 # -*- coding: UTF-8 -*-
-'''
-@Project : ProPos 
+'''@Project : ProPos 
 @File    : loggerx.py
 @Author  : Zhizhong Huang from Fudan University
 @Homepage: https://hzzone.github.io/
@@ -51,14 +50,18 @@ def reduce_tensor(rt):
 
 class LoggerX(object):
 
-    def __init__(self, save_root, enable_wandb=False, **kwargs):
+    # 首先在LoggerX类的__init__方法中添加一个控制日志输出的参数
+    def __init__(self, save_root, enable_wandb=False, show_logs=True, **kwargs):
         # 移除断言，改为条件判断
         self.models_save_dir = osp.join(save_root, 'save_models')
         self.images_save_dir = osp.join(save_root, 'save_images')
+        self.metrics_save_dir = osp.join(save_root, 'metrics')  # 创建metrics目录
         os.makedirs(self.models_save_dir, exist_ok=True)
         os.makedirs(self.images_save_dir, exist_ok=True)
+        os.makedirs(self.metrics_save_dir, exist_ok=True)  # 确保metrics目录存在
         self._modules = []
         self._module_names = []
+        self.metrics_history = {}  # 存储指标历史的字典
         # 检查是否启用了分布式训练
         if dist.is_initialized():
             self.world_size = dist.get_world_size()
@@ -68,10 +71,11 @@ class LoggerX(object):
             self.world_size = 1
             self.local_rank = 0
         self.enable_wandb = enable_wandb
+        self.show_logs = False  # 添加这个参数控制是否显示日志
         if enable_wandb and self.local_rank == 0:
             import wandb
             wandb.init(dir=save_root, settings=wandb.Settings(_disable_stats=True, _disable_meta=True), **kwargs)
-
+    
     @property
     def modules(self):
         return self._modules
@@ -99,13 +103,18 @@ class LoggerX(object):
             module_name = self.module_names[i]
             module = self.modules[i]
             torch.save(module.state_dict(), osp.join(self.models_save_dir, '{}-{}'.format(module_name, epoch)))
+        # 保存当前的指标历史
+        self.save_metrics()
 
     def load_checkpoints(self, epoch):
         for i in range(len(self.modules)):
             module_name = self.module_names[i]
             module = self.modules[i]
             module.load_state_dict(load_network(osp.join(self.models_save_dir, '{}-{}'.format(module_name, epoch))))
+        # 加载指标历史
+        self.load_metrics()
 
+    # 然后修改msg方法，添加对show_logs参数的检查
     def msg(self, stats, step):
         output_str = '[{}] {:05d}, '.format(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()), step)
         output_dict = {}
@@ -123,12 +132,20 @@ class LoggerX(object):
                 var = var.item()
             output_str += '{} {:2.5f}, '.format(var_name, var)
             output_dict[var_name] = var
-
+    
+        # 保存指标到历史记录
+        if self.local_rank == 0:
+            for key, value in output_dict.items():
+                if key not in self.metrics_history:
+                    self.metrics_history[key] = []
+                self.metrics_history[key].append((step, value))
+    
         if self.enable_wandb and self.local_rank == 0:
             import wandb
             wandb.log(output_dict, step)
-
-        if self.local_rank == 0:
+    
+        # 只有当show_logs为True且是主进程时才打印日志
+        if self.show_logs and self.local_rank == 0:
             print(output_str)
 
     def msg_str(self, output_str):
@@ -139,3 +156,31 @@ class LoggerX(object):
         save_image(grid_img, osp.join(self.images_save_dir,
                                       '{}_{}_{}.jpg'.format(n_iter, self.local_rank, sample_type)),
                    nrow=1)
+    
+    def save_metrics(self):
+        """
+        保存所有指标历史到文件，包括损失函数
+        """
+        if self.local_rank != 0:
+            return
+        
+        # 保存所有指标到一个npz文件
+        np.savez(osp.join(self.metrics_save_dir, 'metrics_history.npz'), **{k: np.array(v) for k, v in self.metrics_history.items()})
+        
+        # 为每个重要的评价指标单独保存为txt文件，方便查看
+        for metric_name in ['train_acc', 'val_acc', 'train_nmi', 'val_nmi', 'ema_train_acc', 'ema_train_nmi', 
+                            'loss', 'train_loss', 'val_loss', 'clustering_loss']:  # 添加损失函数相关指标
+            if metric_name in self.metrics_history:
+                with open(osp.join(self.metrics_save_dir, f'{metric_name}.txt'), 'w') as f:
+                    f.write('# step\tvalue\n')
+                    for step, value in self.metrics_history[metric_name]:
+                        f.write(f'{step}\t{value}\n')
+    
+    def load_metrics(self):
+        """
+        加载指标历史
+        """
+        metrics_file = osp.join(self.metrics_save_dir, 'metrics_history.npz')
+        if os.path.exists(metrics_file):
+            data = np.load(metrics_file)
+            self.metrics_history = {k: v.tolist() for k, v in data.items()}
